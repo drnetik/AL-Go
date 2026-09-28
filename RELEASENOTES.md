@@ -18,6 +18,7 @@ To retain the previous behavior, set `cacheImageName` to an empty string in .AL-
 ### Issues
 
 - Issue 2375 - Project/App folder with umlaut breaks incremental build check
+- Create Release no longer fails on a transient error while listing repository artifacts; each page is retried up to 6 times
 
 ## v9.2
 
