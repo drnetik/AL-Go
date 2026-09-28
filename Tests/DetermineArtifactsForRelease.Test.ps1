@@ -1,4 +1,4 @@
-﻿[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '', Justification = 'Mock/callback parameters must match function signatures')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '', Justification = 'Mock/callback parameters must match function signatures')]
 param()
 
 Get-Module Github-Helper | Remove-Module -Force
@@ -85,6 +85,30 @@ Describe 'DetermineArtifactsForRelease Tests' {
             $output | Should -Match 'proj1-main-Apps-1\.0\.0\.0'
             $output | Should -Match 'proj1-main-TestApps-1\.0\.0\.0'
             $output | Should -Match 'proj2-main-Apps-1\.0\.0\.0'
+        }
+
+        It 'Retries a page after a transient error' {
+            $artifacts = @(
+                (MockArtifact 'proj1-main-Apps-1.0.0.0')
+            )
+            $calls = @{ page1 = 0 }
+            Mock Invoke-RestMethod -ParameterFilter { $Uri -like '*actions/artifacts*page=1*' } -MockWith {
+                $calls.page1++
+                if ($calls.page1 -eq 1) { throw 'Response status code does not indicate success: 500 (Internal Server Error).' }
+                [PSCustomObject]@{ total_count = $artifacts.Count; Artifacts = $artifacts }
+            }
+            Mock Invoke-RestMethod -ParameterFilter { $Uri -like '*actions/artifacts*page=2*' } -MockWith {
+                [PSCustomObject]@{ total_count = 0; Artifacts = @() }
+            }
+            Mock Invoke-RestMethod -ParameterFilter { $Uri -like '*/branches/*' } -MockWith {
+                [PSCustomObject]@{ commit = [PSCustomObject]@{ sha = 'abc123' } }
+            }
+            Mock Start-Sleep { } -ModuleName Github-Helper
+
+            & $scriptPath -buildVersion 'latest' -GITHUB_TOKEN 'tok' -TOKENFORPUSH 'tok' -ProjectsJson '["proj1"]' 3>$null
+
+            $calls.page1 | Should -Be 2
+            Get-Content $env:GITHUB_OUTPUT -Raw | Should -Match 'proj1-main-Apps-1\.0\.0\.0'
         }
 
         It 'Test-only project is skipped with a warning (including build-mode test artifacts)' {
