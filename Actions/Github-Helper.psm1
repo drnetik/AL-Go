@@ -1250,7 +1250,10 @@ function GetArtifacts {
         }
         $uri = "$api_url/repos/$repository/actions/artifacts?per_page=$($per_page)&page=$($page_no)"
         Write-Host $uri
-        $artifacts = (InvokeWebRequest -Headers $headers -Uri $uri).Content | ConvertFrom-Json
+        # Deep paging over many artifacts hits sporadic 5xx responses; retry each page instead of failing the deployment
+        $artifacts = (Invoke-CommandWithRetry -RetryCount 6 -FirstDelay 5 -MaxWaitBetweenRetries 60 -ScriptBlock {
+            InvokeWebRequest -Headers $headers -Uri $uri
+        }).Content | ConvertFrom-Json
         # If no artifacts are read, we are done
         if ($artifacts.artifacts.Count -eq 0) {
             break
